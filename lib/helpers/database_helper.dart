@@ -152,6 +152,12 @@ class DatabaseHelper {
     await db.delete('habit_logs', where: 'habit_id = ?', whereArgs: [habitId]);
   }
 
+  Future<int> deleteAllHabits() async {
+    Database db = await this.db;
+    await db.delete('habit_logs');
+    return await db.delete('habits');
+  }
+
   // ─── HABIT LOGS ──────────────────────────────────────
   Future<List<HabitLog>> getLogsForHabit(int habitId) async {
     Database db = await this.db;
@@ -189,11 +195,9 @@ class DatabaseHelper {
         .where((l) => l.completed == 1)
         .map((l) => DateTime(l.date!.year, l.date!.month, l.date!.day))
         .toSet();
-
     int streak = 0;
     DateTime check = DateTime.now();
     int safetyLimit = 0;
-
     while (safetyLimit < 365) {
       safetyLimit++;
       final day = DateTime(check.year, check.month, check.day);
@@ -245,6 +249,11 @@ class DatabaseHelper {
     }
   }
 
+  Future<int> deleteAllJournalEntries() async {
+    Database db = await this.db;
+    return await db.delete('journal_entries');
+  }
+
   // ─── CUSTOM CATEGORIES ───────────────────────────────
   Future<List<Map<String, dynamic>>> getCustomCategories() async {
     Database db = await this.db;
@@ -253,11 +262,13 @@ class DatabaseHelper {
 
   Future<int> insertCustomCategory(String name, int iconCode) async {
     Database db = await this.db;
-    return await db.insert('custom_categories', {'name': name, 'icon_code': iconCode});
+    return await db
+        .insert('custom_categories', {'name': name, 'icon_code': iconCode});
   }
 
   Future<int> deleteCustomCategory(int id) async {
     Database db = await this.db;
-    return await db.delete('custom_categories', where: 'id = ?', whereArgs: [id]);
+    return await db
+        .delete('custom_categories', where: 'id = ?', whereArgs: [id]);
   }
 }

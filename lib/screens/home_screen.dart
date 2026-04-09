@@ -16,7 +16,7 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Task> _allTasks = [];
   List<Habit> _todayHabits = [];
   Map<int, bool> _habitStatus = {};
@@ -25,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = true;
+  bool _showUpcoming = false;
 
   final List<Map<String, dynamic>> _categories = [
     {'label': 'All', 'icon': Icons.grid_view_rounded},
@@ -37,13 +38,20 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadData();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadData();
   }
 
   Future<void> _loadData() async {
@@ -51,7 +59,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final habits = await DatabaseHelper.instance.getTodayHabits();
     final Map<int, bool> status = {};
     for (final h in habits) {
-      final log = await DatabaseHelper.instance.getLogForDate(h.id!, DateTime.now());
+      final log = await DatabaseHelper.instance
+          .getLogForDate(h.id!, DateTime.now());
       status[h.id!] = log?.completed == 1;
     }
     if (mounted) {
@@ -72,16 +81,27 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  List<Task> get _filteredTasks {
+  List<Task> get _todayAndOverdueTasks {
     final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
     return _allTasks.where((t) {
-      final d = t.date!;
-      final isToday = d.year == today.year &&
-          d.month == today.month &&
-          d.day == today.day;
-      final isOverdue = d.isBefore(DateTime(today.year, today.month, today.day));
       if (t.status == 1) return false;
-      if (!isToday && !isOverdue) return false;
+      final d = DateTime(t.date!.year, t.date!.month, t.date!.day);
+      if (d.isAfter(todayOnly)) return false;
+      if (_selectedCategory != 'All' && t.category != _selectedCategory) return false;
+      if (_searchQuery.isNotEmpty &&
+          !t.title!.toLowerCase().contains(_searchQuery.toLowerCase())) return false;
+      return true;
+    }).toList();
+  }
+
+  List<Task> get _upcomingTasks {
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    return _allTasks.where((t) {
+      if (t.status == 1) return false;
+      final d = DateTime(t.date!.year, t.date!.month, t.date!.day);
+      if (!d.isAfter(todayOnly)) return false;
       if (_selectedCategory != 'All' && t.category != _selectedCategory) return false;
       if (_searchQuery.isNotEmpty &&
           !t.title!.toLowerCase().contains(_searchQuery.toLowerCase())) return false;
@@ -98,7 +118,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return Center(child: CircularProgressIndicator(color: primary));
     }
 
-    final pendingTasks = _filteredTasks;
+    final pendingTasks = _todayAndOverdueTasks;
+    final upcomingTasks = _upcomingTasks;
 
     return WillPopScope(
       onWillPop: () async {
@@ -119,25 +140,21 @@ class _HomeScreenState extends State<HomeScreen> {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 60, 20, 100),
           children: [
-            // Header row
+            // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "Today's Tasks",
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                        color: primary,
-                      ),
-                    ),
-                    Text(
-                      DateFormat('EEEE, MMM d').format(DateTime.now()),
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                    ),
+                    Text("Today's Tasks",
+                        style: TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.bold,
+                            color: primary)),
+                    Text(DateFormat('EEEE, MMM d').format(DateTime.now()),
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.grey.shade500)),
                   ],
                 ),
                 Row(
@@ -155,8 +172,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: Icon(Icons.settings_outlined, color: primary),
                       onPressed: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                      ).then((_) => setState(() {})),
+                        MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()),
+                      ).then((_) => _loadData()),
                     ),
                   ],
                 ),
@@ -177,10 +195,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 decoration: InputDecoration(
                   hintText: 'Search tasks...',
                   hintStyle: TextStyle(color: Colors.grey.shade400),
-                  prefixIcon: Icon(Icons.search_rounded, color: Colors.grey.shade400),
+                  prefixIcon:
+                      Icon(Icons.search_rounded, color: Colors.grey.shade400),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
-                          icon: Icon(Icons.close_rounded, color: Colors.grey.shade400),
+                          icon: Icon(Icons.close_rounded,
+                              color: Colors.grey.shade400),
                           onPressed: () {
                             _searchController.clear();
                             setState(() => _searchQuery = '');
@@ -202,32 +222,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: _categories.map((cat) {
                   final bool isSelected = _selectedCategory == cat['label'];
                   return GestureDetector(
-                    onTap: () => setState(() => _selectedCategory = cat['label']),
+                    onTap: () =>
+                        setState(() => _selectedCategory = cat['label']),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: isSelected ? primary : Colors.transparent,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: isSelected ? primary : Colors.grey.shade400,
-                        ),
+                            color: isSelected ? primary : Colors.grey.shade400),
                       ),
                       child: Row(
                         children: [
                           Icon(cat['icon'] as IconData,
                               size: 14,
-                              color: isSelected ? Colors.white : Colors.grey.shade500),
+                              color: isSelected
+                                  ? Colors.white
+                                  : Colors.grey.shade500),
                           const SizedBox(width: 4),
-                          Text(
-                            cat['label'] as String,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: isSelected ? Colors.white : Colors.grey.shade500,
-                            ),
-                          ),
+                          Text(cat['label'] as String,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.grey.shade500)),
                         ],
                       ),
                     ),
@@ -237,19 +259,22 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Tasks section
+            // Today + Overdue tasks
             if (pendingTasks.isEmpty)
               Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   child: Column(
                     children: [
-                      Icon(Icons.task_alt, size: 48, color: Colors.grey.shade300),
+                      Icon(Icons.task_alt,
+                          size: 48, color: Colors.grey.shade300),
                       const SizedBox(height: 8),
                       Text(
-                        _searchQuery.isNotEmpty ? 'No tasks found' : 'No tasks today!',
-                        style: TextStyle(fontSize: 16, color: Colors.grey.shade400),
-                      ),
+                          _searchQuery.isNotEmpty
+                              ? 'No tasks found'
+                              : 'No tasks today!',
+                          style: TextStyle(
+                              fontSize: 16, color: Colors.grey.shade400)),
                     ],
                   ),
                 ),
@@ -257,25 +282,55 @@ class _HomeScreenState extends State<HomeScreen> {
             else
               ...pendingTasks.map((task) => _buildTaskCard(task)),
 
-            // Today's Habits section
+            // Today's Habits section — ALWAYS before upcoming
             if (_todayHabits.isNotEmpty) ...[
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Icon(Icons.loop_rounded, size: 18, color: Colors.grey.shade500),
+                  Icon(Icons.loop_rounded,
+                      size: 18, color: Colors.grey.shade500),
                   const SizedBox(width: 6),
-                  Text(
-                    "Today's Habits",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
+                  Text("Today's Habits",
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600)),
                 ],
               ),
               const SizedBox(height: 12),
               ..._todayHabits.map((habit) => _buildHabitRow(habit)),
+            ],
+
+            // Upcoming tasks — ALWAYS after habits
+            if (upcomingTasks.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: () =>
+                    setState(() => _showUpcoming = !_showUpcoming),
+                child: Row(
+                  children: [
+                    Icon(Icons.upcoming_outlined,
+                        size: 18, color: Colors.grey.shade500),
+                    const SizedBox(width: 6),
+                    Text('Upcoming (${upcomingTasks.length})',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade600)),
+                    const Spacer(),
+                    Icon(
+                        _showUpcoming
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: Colors.grey.shade400),
+                  ],
+                ),
+              ),
+              if (_showUpcoming) ...[
+                const SizedBox(height: 12),
+                ...upcomingTasks
+                    .map((task) => _buildTaskCard(task, isUpcoming: true)),
+              ],
             ],
           ],
         ),
@@ -283,11 +338,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTaskCard(Task task) {
+  Widget _buildTaskCard(Task task, {bool isUpcoming = false}) {
     final priorityColor = _getPriorityColor(task.priority);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final today = DateTime.now();
-    final isOverdue = task.date!.isBefore(DateTime(today.year, today.month, today.day));
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final taskDay =
+        DateTime(task.date!.year, task.date!.month, task.date!.day);
+    final isOverdue = taskDay.isBefore(todayOnly);
 
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -299,19 +357,24 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
+          color: isUpcoming
+              ? (isDark
+                  ? const Color(0xFF1F2937).withOpacity(0.6)
+                  : Colors.grey.shade50)
+              : Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 2))
           ],
-          border: Border(left: BorderSide(color: priorityColor, width: 4)),
+          border:
+              Border(left: BorderSide(color: priorityColor, width: 4)),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
               Expanded(
@@ -321,11 +384,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            task.title ?? '',
-                            style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600),
-                          ),
+                          child: Text(task.title ?? '',
+                              style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600)),
                         ),
                         if (isOverdue)
                           Container(
@@ -351,7 +413,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 4),
                         Text(_dateFormatter.format(task.date!),
                             style: TextStyle(
-                                fontSize: 13, color: Colors.grey.shade500)),
+                                fontSize: 13,
+                                color: Colors.grey.shade500)),
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -393,10 +456,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   task.status = (value ?? false) ? 1 : 0;
                   DatabaseHelper.instance.updateTask(task);
                   Fluttertoast.showToast(
-                    msg: 'Task completed! 🎉',
-                    toastLength: Toast.LENGTH_SHORT,
-                    gravity: ToastGravity.BOTTOM,
-                  );
+                      msg: 'Task completed! 🎉',
+                      toastLength: Toast.LENGTH_SHORT,
+                      gravity: ToastGravity.BOTTOM);
                   _loadData();
                 },
               ),
@@ -418,17 +480,13 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2))
         ],
         border: Border(
-          left: BorderSide(
-            color: isDone ? primary : Colors.grey.shade300,
-            width: 4,
-          ),
-        ),
+            left: BorderSide(
+                color: isDone ? primary : Colors.grey.shade300, width: 4)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -442,19 +500,16 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    habit.name ?? '',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      decoration: isDone ? TextDecoration.lineThrough : null,
-                      color: isDone ? Colors.grey : null,
-                    ),
-                  ),
-                  Text(
-                    habit.category ?? 'Personal',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                  ),
+                  Text(habit.name ?? '',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          decoration:
+                              isDone ? TextDecoration.lineThrough : null,
+                          color: isDone ? Colors.grey : null)),
+                  Text(habit.category ?? 'Personal',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.grey.shade500)),
                 ],
               ),
             ),
@@ -474,7 +529,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Icon(Icons.check_rounded,
                     size: 18,
-                    color: isDone ? Colors.white : Colors.grey.shade400),
+                    color:
+                        isDone ? Colors.white : Colors.grey.shade400),
               ),
             ),
           ],

@@ -11,18 +11,33 @@ class HabitsScreen extends StatefulWidget {
   _HabitsScreenState createState() => _HabitsScreenState();
 }
 
-class _HabitsScreenState extends State<HabitsScreen> {
+class _HabitsScreenState extends State<HabitsScreen>
+    with WidgetsBindingObserver {
   List<Habit> _habits = [];
   Map<int, bool> _todayStatus = {};
   Map<int, int> _streaks = {};
   String _selectedCategory = 'All';
 
-  final List<String> _categories = ['All', 'Personal', 'Work', 'Study', 'Health'];
+  final List<String> _categories = [
+    'All', 'Personal', 'Work', 'Study', 'Health'
+  ];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadHabits();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadHabits();
   }
 
   Future<void> _loadHabits() async {
@@ -30,9 +45,11 @@ class _HabitsScreenState extends State<HabitsScreen> {
     final Map<int, bool> status = {};
     final Map<int, int> streaks = {};
     for (final h in habits) {
-      final log = await DatabaseHelper.instance.getLogForDate(h.id!, DateTime.now());
+      final log = await DatabaseHelper.instance
+          .getLogForDate(h.id!, DateTime.now());
       status[h.id!] = log?.completed == 1;
-      streaks[h.id!] = await DatabaseHelper.instance.getStreakForHabit(h);
+      streaks[h.id!] =
+          await DatabaseHelper.instance.getStreakForHabit(h);
     }
     if (mounted) {
       setState(() {
@@ -44,7 +61,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
   }
 
   List<Habit> get _filteredHabits => _habits
-      .where((h) => _selectedCategory == 'All' || h.category == _selectedCategory)
+      .where((h) =>
+          _selectedCategory == 'All' || h.category == _selectedCategory)
       .toList();
 
   @override
@@ -66,12 +84,14 @@ class _HabitsScreenState extends State<HabitsScreen> {
           children: [
             Text('Habits',
                 style: TextStyle(
-                    fontSize: 36, fontWeight: FontWeight.bold, color: primary)),
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                    color: primary)),
             Text('Build your streaks',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
+                style: TextStyle(
+                    fontSize: 14, color: Colors.grey.shade500)),
             const SizedBox(height: 20),
 
-            // Category filter
             SizedBox(
               height: 36,
               child: ListView(
@@ -79,7 +99,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 children: _categories.map((cat) {
                   final isSelected = _selectedCategory == cat;
                   return GestureDetector(
-                    onTap: () => setState(() => _selectedCategory = cat),
+                    onTap: () =>
+                        setState(() => _selectedCategory = cat),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       margin: const EdgeInsets.only(right: 8),
@@ -89,7 +110,9 @@ class _HabitsScreenState extends State<HabitsScreen> {
                         color: isSelected ? primary : Colors.transparent,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                            color: isSelected ? primary : Colors.grey.shade400),
+                            color: isSelected
+                                ? primary
+                                : Colors.grey.shade400),
                       ),
                       child: Text(cat,
                           style: TextStyle(
@@ -134,12 +157,15 @@ class _HabitsScreenState extends State<HabitsScreen> {
     final primary = Theme.of(context).colorScheme.primary;
     final bool isDoneToday = _todayStatus[habit.id] ?? false;
     final int streak = _streaks[habit.id] ?? 0;
-    final List<String> allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final List<String> allDays = [
+      'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
+    ];
 
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => HabitDetailScreen(habit: habit)),
+        MaterialPageRoute(
+            builder: (_) => HabitDetailScreen(habit: habit)),
       ).then((_) => _loadHabits()),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
@@ -166,7 +192,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
                       children: [
                         Text(habit.name ?? '',
                             style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600)),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600)),
                         const SizedBox(height: 4),
                         Row(
                           children: [
@@ -202,7 +229,6 @@ class _HabitsScreenState extends State<HabitsScreen> {
                       ],
                     ),
                   ),
-                  // Today check button
                   if (habit.isScheduledFor(DateTime.now()))
                     GestureDetector(
                       onTap: () async {
@@ -215,7 +241,9 @@ class _HabitsScreenState extends State<HabitsScreen> {
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: isDoneToday ? primary : Colors.grey.shade200,
+                          color: isDoneToday
+                              ? primary
+                              : Colors.grey.shade200,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(Icons.check_rounded,
@@ -241,7 +269,9 @@ class _HabitsScreenState extends State<HabitsScreen> {
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: isActive ? primary : Colors.grey.shade300),
+                          color: isActive
+                              ? primary
+                              : Colors.grey.shade300),
                     ),
                     child: Center(
                       child: Text(day[0],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:task_manager/screens/home_screen.dart';
 import 'package:task_manager/screens/habits_screen.dart';
 import 'package:task_manager/screens/journal_screen.dart';
@@ -18,11 +19,23 @@ class OmnixApp extends StatefulWidget {
 class _OmnixAppState extends State<OmnixApp> {
   ThemeMode _themeMode = ThemeMode.light;
 
-  void toggleTheme() {
-    setState(() {
-      _themeMode =
-          _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _loadTheme();
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = prefs.getBool('isDark') ?? false;
+    if (mounted) setState(() => _themeMode = isDark ? ThemeMode.dark : ThemeMode.light);
+  }
+
+  Future<void> toggleTheme() async {
+    final newMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    setState(() => _themeMode = newMode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isDark', newMode == ThemeMode.dark);
   }
 
   bool get isDarkMode => _themeMode == ThemeMode.dark;
@@ -119,7 +132,8 @@ class _MainShellState extends State<MainShell> {
                 _navItem(Icons.check_circle_outline_rounded,
                     Icons.check_circle_rounded, 'Today', 0),
                 _navItem(Icons.loop_rounded, Icons.loop_rounded, 'Habits', 1),
-                _navItem(Icons.book_outlined, Icons.book_rounded, 'Journal', 2),
+                _navItem(
+                    Icons.book_outlined, Icons.book_rounded, 'Journal', 2),
               ],
             ),
           ),
@@ -128,7 +142,8 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Widget _navItem(IconData icon, IconData activeIcon, String label, int index) {
+  Widget _navItem(
+      IconData icon, IconData activeIcon, String label, int index) {
     final bool isActive = _currentIndex == index;
     final primary = Theme.of(context).colorScheme.primary;
     final isDark = Theme.of(context).brightness == Brightness.dark;
