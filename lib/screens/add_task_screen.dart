@@ -3,6 +3,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import '../helpers/database_helper.dart';
 import '../models/task_model.dart';
+import '../services/sync_service.dart';
 
 class AddTaskScreen extends StatefulWidget {
   final Function? updateTaskList;
@@ -46,28 +47,28 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     final firstDate = widget.task != null
         ? DateTime(2020)
         : DateTime(today.year, today.month, today.day);
-
     final DateTime? date = await showDatePicker(
       context: context,
       initialDate: _date.isBefore(firstDate) ? firstDate : _date,
       firstDate: firstDate,
       lastDate: DateTime(2100),
     );
-    if (date != null && date != _date) {
-      setState(() => _date = date);
-    }
+    if (date != null && date != _date) setState(() => _date = date);
   }
 
-  _delete() {
-    DatabaseHelper.instance.deleteTask(widget.task!.id!);
+  _delete() async {
+    final task = widget.task!;
+    await DatabaseHelper.instance.deleteTask(task.id!);
+    await SyncService.pushTask(task, isDelete: true);
     Fluttertoast.showToast(
-        msg: 'Task Deleted', toastLength: Toast.LENGTH_LONG,
+        msg: 'Task Deleted',
+        toastLength: Toast.LENGTH_LONG,
         gravity: ToastGravity.BOTTOM);
     widget.updateTaskList!();
     Navigator.pop(context);
   }
 
-  _submit() {
+  _submit() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
       Task task = Task(
@@ -78,15 +79,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         status: widget.task?.status ?? 0,
       );
       if (widget.task == null) {
-        DatabaseHelper.instance.insertTask(task);
+        final localId = await DatabaseHelper.instance.insertTask(task);
+        task.id = localId;
+        await SyncService.pushTask(task);
         Fluttertoast.showToast(
-            msg: 'New Task Added', toastLength: Toast.LENGTH_LONG,
+            msg: 'New Task Added',
+            toastLength: Toast.LENGTH_LONG,
             gravity: ToastGravity.BOTTOM);
       } else {
         task.id = widget.task!.id;
-        DatabaseHelper.instance.updateTask(task);
+        task.remoteId = widget.task!.remoteId;
+        await DatabaseHelper.instance.updateTask(task);
+        await SyncService.pushTask(task);
         Fluttertoast.showToast(
-            msg: 'Task Updated', toastLength: Toast.LENGTH_LONG,
+            msg: 'Task Updated',
+            toastLength: Toast.LENGTH_LONG,
             gravity: ToastGravity.BOTTOM);
       }
       widget.updateTaskList!();
@@ -99,23 +106,20 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = Theme.of(context).colorScheme.primary;
     final textColor = isDark ? Colors.white : Colors.black87;
-    final labelColor =
-        isDark ? Colors.grey.shade300 : Colors.grey.shade700;
+    final labelColor = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
 
     return Scaffold(
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: SingleChildScrollView(
           child: Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 28.0, vertical: 70.0),
+            padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 70.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
-                  child:
-                      Icon(Icons.arrow_back_ios, size: 28.0, color: primary),
+                  child: Icon(Icons.arrow_back_ios, size: 28.0, color: primary),
                 ),
                 const SizedBox(height: 20.0),
                 Text(
@@ -131,13 +135,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title
                       TextFormField(
                         style: TextStyle(fontSize: 16.0, color: textColor),
                         decoration: InputDecoration(
                           labelText: 'Title',
-                          labelStyle:
-                              TextStyle(fontSize: 16.0, color: labelColor),
+                          labelStyle: TextStyle(fontSize: 16.0, color: labelColor),
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12.0)),
                           enabledBorder: OutlineInputBorder(
@@ -149,30 +151,23 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12.0),
-                            borderSide:
-                                BorderSide(color: primary, width: 2),
+                            borderSide: BorderSide(color: primary, width: 2),
                           ),
                         ),
-                        validator: (input) =>
-                            (input?.trim().isEmpty ?? true)
-                                ? 'Please enter a task title'
-                                : null,
+                        validator: (input) => (input?.trim().isEmpty ?? true)
+                            ? 'Please enter a task title'
+                            : null,
                         onSaved: (input) => _title = input ?? '',
                         initialValue: _title,
                       ),
                       const SizedBox(height: 16),
-
-                      // Date
                       TextFormField(
                         readOnly: true,
                         style: TextStyle(fontSize: 16.0, color: textColor),
                         decoration: InputDecoration(
                           labelText: 'Date',
-                          labelStyle:
-                              TextStyle(fontSize: 16.0, color: labelColor),
-                          prefixIcon: Icon(
-                              Icons.calendar_today_outlined,
-                              color: primary),
+                          labelStyle: TextStyle(fontSize: 16.0, color: labelColor),
+                          prefixIcon: Icon(Icons.calendar_today_outlined, color: primary),
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12.0)),
                           enabledBorder: OutlineInputBorder(
@@ -184,8 +179,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12.0),
-                            borderSide:
-                                BorderSide(color: primary, width: 2),
+                            borderSide: BorderSide(color: primary, width: 2),
                           ),
                         ),
                         onTap: _handleDatePicker,
@@ -193,30 +187,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                             text: _dateFormatter.format(_date)),
                       ),
                       const SizedBox(height: 16),
-
-                      // Priority
                       DropdownButtonFormField<String>(
-                        dropdownColor: isDark
-                            ? const Color(0xFF1F2937)
-                            : Colors.white,
-                        icon: Icon(Icons.keyboard_arrow_down_rounded,
-                            color: primary),
+                        dropdownColor: isDark ? const Color(0xFF1F2937) : Colors.white,
+                        icon: Icon(Icons.keyboard_arrow_down_rounded, color: primary),
                         items: _priorities.map((String priority) {
                           return DropdownMenuItem(
                             value: priority,
                             child: Text(priority,
-                                style: TextStyle(
-                                    color: textColor, fontSize: 16.0)),
+                                style: TextStyle(color: textColor, fontSize: 16.0)),
                           );
                         }).toList(),
-                        style:
-                            TextStyle(fontSize: 16.0, color: textColor),
+                        style: TextStyle(fontSize: 16.0, color: textColor),
                         decoration: InputDecoration(
                           labelText: 'Priority',
-                          labelStyle:
-                              TextStyle(fontSize: 16.0, color: labelColor),
-                          prefixIcon:
-                              Icon(Icons.flag_outlined, color: primary),
+                          labelStyle: TextStyle(fontSize: 16.0, color: labelColor),
+                          prefixIcon: Icon(Icons.flag_outlined, color: primary),
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12.0)),
                           enabledBorder: OutlineInputBorder(
@@ -228,36 +213,28 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12.0),
-                            borderSide:
-                                BorderSide(color: primary, width: 2),
+                            borderSide: BorderSide(color: primary, width: 2),
                           ),
                         ),
-                        validator: (input) => input == null
-                            ? 'Please select a priority'
-                            : null,
+                        validator: (input) =>
+                            input == null ? 'Please select a priority' : null,
                         onChanged: (value) =>
                             setState(() => _priority = value as String),
                         value: _priority,
                       ),
                       const SizedBox(height: 24),
-
-                      // Category
                       Text('Category',
-                          style: TextStyle(
-                              fontSize: 16.0, color: labelColor)),
+                          style: TextStyle(fontSize: 16.0, color: labelColor)),
                       const SizedBox(height: 12),
                       Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: _categories.map((cat) {
-                          final bool isSelected =
-                              _category == cat['label'];
+                          final bool isSelected = _category == cat['label'];
                           return GestureDetector(
-                            onTap: () => setState(
-                                () => _category = cat['label']),
+                            onTap: () =>
+                                setState(() => _category = cat['label']),
                             child: AnimatedContainer(
-                              duration:
-                                  const Duration(milliseconds: 200),
+                              duration: const Duration(milliseconds: 200),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 10),
                               decoration: BoxDecoration(
@@ -266,8 +243,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                     : (isDark
                                         ? Colors.grey.shade800
                                         : Colors.grey.shade100),
-                                borderRadius:
-                                    BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
                                 children: [
@@ -288,8 +264,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                             ? Colors.white
                                             : (isDark
                                                 ? Colors.grey.shade300
-                                                : Colors.grey
-                                                    .shade600)),
+                                                : Colors.grey.shade600)),
                                   ),
                                 ],
                               ),
@@ -298,8 +273,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         }).toList(),
                       ),
                       const SizedBox(height: 32),
-
-                      // Add/Update button
                       SizedBox(
                         height: 56.0,
                         width: double.infinity,
@@ -309,20 +282,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                             backgroundColor: primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(16.0)),
+                                borderRadius: BorderRadius.circular(16.0)),
                           ),
                           child: Text(
-                            widget.task == null
-                                ? 'Add Task'
-                                : 'Update Task',
+                            widget.task == null ? 'Add Task' : 'Update Task',
                             style: const TextStyle(
-                                fontSize: 18.0,
-                                fontWeight: FontWeight.w600),
+                                fontSize: 18.0, fontWeight: FontWeight.w600),
                           ),
                         ),
                       ),
-
                       if (widget.task != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 16.0),
@@ -335,8 +303,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                 backgroundColor: Colors.red.shade400,
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(16.0)),
+                                    borderRadius: BorderRadius.circular(16.0)),
                               ),
                               child: const Text('Delete Task',
                                   style: TextStyle(

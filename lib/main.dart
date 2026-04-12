@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:task_manager/screens/home_screen.dart';
 import 'package:task_manager/screens/habits_screen.dart';
 import 'package:task_manager/screens/journal_screen.dart';
+import 'package:task_manager/screens/auth/login_screen.dart';
+import 'package:task_manager/screens/splash_screen.dart';
 
-void main() {
+const supabaseUrl = 'https://ufsbuoffpodmxexdxlnj.supabase.co';
+const supabaseAnonKey =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmc2J1b2ZmcG9kbXhleGR4bG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NjkwOTQsImV4cCI6MjA5MTU0NTA5NH0.nN23GC8dMpnDADUiHeEGLOpoXewBrI7v4_qqjMRlgRY';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
   runApp(OmnixApp());
 }
 
@@ -28,11 +37,14 @@ class _OmnixAppState extends State<OmnixApp> {
   Future<void> _loadTheme() async {
     final prefs = await SharedPreferences.getInstance();
     final isDark = prefs.getBool('isDark') ?? false;
-    if (mounted) setState(() => _themeMode = isDark ? ThemeMode.dark : ThemeMode.light);
+    if (mounted)
+      setState(
+          () => _themeMode = isDark ? ThemeMode.dark : ThemeMode.light);
   }
 
   Future<void> toggleTheme() async {
-    final newMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    final newMode =
+        _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
     setState(() => _themeMode = newMode);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isDark', newMode == ThemeMode.dark);
@@ -84,7 +96,26 @@ class _OmnixAppState extends State<OmnixApp> {
           elevation: 0,
         ),
       ),
-      home: const MainShell(),
+      home: const SplashScreen(),
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AuthState>(
+      stream: Supabase.instance.client.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        final session = Supabase.instance.client.auth.currentSession;
+        return session != null ? const MainShell() : const LoginScreen();
+      },
     );
   }
 }
@@ -168,14 +199,11 @@ class _MainShellState extends State<MainShell> {
             ),
             if (isActive) ...[
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
+              Text(label,
+                  style: TextStyle(
+                      color: primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13)),
             ],
           ],
         ),

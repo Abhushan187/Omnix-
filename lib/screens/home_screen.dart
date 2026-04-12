@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../helpers/database_helper.dart';
 import '../models/task_model.dart';
 import '../models/habit_model.dart';
+import '../services/sync_service.dart';
 import '../main.dart';
 import 'add_task_screen.dart';
 import 'settings_screen.dart';
@@ -55,6 +56,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadData() async {
+    // Pull latest data from Supabase first
+    await SyncService.pullAll();
+
     final tasks = await DatabaseHelper.instance.getTaskList();
     final habits = await DatabaseHelper.instance.getTodayHabits();
     final Map<int, bool> status = {};
@@ -88,9 +92,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (t.status == 1) return false;
       final d = DateTime(t.date!.year, t.date!.month, t.date!.day);
       if (d.isAfter(todayOnly)) return false;
-      if (_selectedCategory != 'All' && t.category != _selectedCategory) return false;
+      if (_selectedCategory != 'All' && t.category != _selectedCategory)
+        return false;
       if (_searchQuery.isNotEmpty &&
-          !t.title!.toLowerCase().contains(_searchQuery.toLowerCase())) return false;
+          !t.title!.toLowerCase().contains(_searchQuery.toLowerCase()))
+        return false;
       return true;
     }).toList();
   }
@@ -102,9 +108,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (t.status == 1) return false;
       final d = DateTime(t.date!.year, t.date!.month, t.date!.day);
       if (!d.isAfter(todayOnly)) return false;
-      if (_selectedCategory != 'All' && t.category != _selectedCategory) return false;
+      if (_selectedCategory != 'All' && t.category != _selectedCategory)
+        return false;
       if (_searchQuery.isNotEmpty &&
-          !t.title!.toLowerCase().contains(_searchQuery.toLowerCase())) return false;
+          !t.title!.toLowerCase().contains(_searchQuery.toLowerCase()))
+        return false;
       return true;
     }).toList();
   }
@@ -140,7 +148,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 60, 20, 100),
           children: [
-            // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -181,22 +188,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
             const SizedBox(height: 20),
-
-            // Search bar
             Container(
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1F2937) : Colors.grey.shade100,
+                color: isDark
+                    ? const Color(0xFF1F2937)
+                    : Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: TextField(
                 controller: _searchController,
                 onChanged: (val) => setState(() => _searchQuery = val),
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                style:
+                    TextStyle(color: isDark ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
                   hintText: 'Search tasks...',
                   hintStyle: TextStyle(color: Colors.grey.shade400),
-                  prefixIcon:
-                      Icon(Icons.search_rounded, color: Colors.grey.shade400),
+                  prefixIcon: Icon(Icons.search_rounded,
+                      color: Colors.grey.shade400),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
                           icon: Icon(Icons.close_rounded,
@@ -213,8 +221,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Category chips
             SizedBox(
               height: 40,
               child: ListView(
@@ -233,7 +239,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         color: isSelected ? primary : Colors.transparent,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                            color: isSelected ? primary : Colors.grey.shade400),
+                            color: isSelected
+                                ? primary
+                                : Colors.grey.shade400),
                       ),
                       child: Row(
                         children: [
@@ -258,8 +266,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 20),
-
-            // Today + Overdue tasks
             if (pendingTasks.isEmpty)
               Center(
                 child: Padding(
@@ -282,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             else
               ...pendingTasks.map((task) => _buildTaskCard(task)),
 
-            // Today's Habits section — ALWAYS before upcoming
+            // Today's Habits — always before upcoming
             if (_todayHabits.isNotEmpty) ...[
               const SizedBox(height: 8),
               Row(
@@ -301,7 +307,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ..._todayHabits.map((habit) => _buildHabitRow(habit)),
             ],
 
-            // Upcoming tasks — ALWAYS after habits
+            // Upcoming tasks — always after habits
             if (upcomingTasks.isNotEmpty) ...[
               const SizedBox(height: 16),
               GestureDetector(
@@ -351,7 +357,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => AddTaskScreen(updateTaskList: _loadData, task: task),
+          builder: (_) =>
+              AddTaskScreen(updateTaskList: _loadData, task: task),
         ),
       ),
       child: Container(
@@ -369,12 +376,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 blurRadius: 8,
                 offset: const Offset(0, 2))
           ],
-          border:
-              Border(left: BorderSide(color: priorityColor, width: 4)),
+          border: Border(left: BorderSide(color: priorityColor, width: 4)),
         ),
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
               Expanded(
@@ -413,8 +418,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         const SizedBox(width: 4),
                         Text(_dateFormatter.format(task.date!),
                             style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade500)),
+                                fontSize: 13, color: Colors.grey.shade500)),
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -452,9 +456,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               Checkbox(
                 value: task.status == 1,
-                onChanged: (bool? value) {
+                onChanged: (bool? value) async {
                   task.status = (value ?? false) ? 1 : 0;
-                  DatabaseHelper.instance.updateTask(task);
+                  await DatabaseHelper.instance.updateTask(task);
+                  await SyncService.pushTask(task);
                   Fluttertoast.showToast(
                       msg: 'Task completed! 🎉',
                       toastLength: Toast.LENGTH_SHORT,
@@ -517,6 +522,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onTap: () async {
                 await DatabaseHelper.instance
                     .toggleHabitLog(habit.id!, DateTime.now());
+                final log = await DatabaseHelper.instance
+                    .getLogForDate(habit.id!, DateTime.now());
+                if (log != null && habit.remoteId != null) {
+                  await SyncService.pushHabitLog(log, habit.remoteId!);
+                }
                 _loadData();
               },
               child: AnimatedContainer(
@@ -529,8 +539,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 child: Icon(Icons.check_rounded,
                     size: 18,
-                    color:
-                        isDone ? Colors.white : Colors.grey.shade400),
+                    color: isDone ? Colors.white : Colors.grey.shade400),
               ),
             ),
           ],

@@ -1,88 +1,112 @@
 import 'dart:async';
-import 'dart:ui';
-
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../main.dart';
 
-import 'home_screen.dart';
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({Key? key}) : super(key: key);
 
-class Splash extends StatefulWidget {
   @override
-  _SplashState createState() => _SplashState();
+  _SplashScreenState createState() => _SplashScreenState();
 }
 
-class _SplashState extends State<Splash> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
+
   @override
-  // ignore: must_call_super
   void initState() {
     super.initState();
-    Timer(
-        Duration(seconds: 1),
-        () => Navigator.push(
-            context, MaterialPageRoute(builder: (_) => HomeScreen())));
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
+    _controller.forward();
+    Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AuthGate()),
+        );
+      }
+    });
   }
 
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final primary = const Color(0xFF4F46E5);
+
     return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          Container(
-            decoration: BoxDecoration(color: Colors.white),
+      backgroundColor: const Color(0xFFF8F8FF),
+      body: Center(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: ScaleTransition(
+            scale: _scaleAnimation,
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: <Widget>[
-                Expanded(
-                  flex: 2,
-                  child: Container(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: <Widget>[
-                        CircleAvatar(
-                          backgroundColor: Color.fromRGBO(250, 250, 250, 1),
-                          radius: 40.0,
-                          child: Icon(
-                            Icons.check_rounded,
-                            color: Color(0xFF18D191),
-                            size: 60.0,
-                          ),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.only(top: 20.0),
-                        ),
-                        Text(
-                          "Task Manager",
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 20.0,
-                          ),
-                        ),
-                      ],
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Logo circle
+                Container(
+                  width: 90,
+                  height: 90,
+                  decoration: BoxDecoration(
+                    color: primary,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: primary.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'O',
+                      style: TextStyle(
+                        fontSize: 52,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: <Widget>[
-                      //CircularProgressIndicator(backgroundColor: Colors.grey),
-                      Padding(padding: EdgeInsets.only(top: 20.0)),
-                      Text(
-                        "Bornomala Technologies",
-                        style: TextStyle(
-                          color: Colors.black54,
-                          fontSize: 17.0,
-                        ),
-                      ),
-                      Padding(padding: EdgeInsets.only(bottom: 60.0)),
-                    ],
+                const SizedBox(height: 24),
+                Text(
+                  'Omnix',
+                  style: TextStyle(
+                    fontSize: 38,
+                    fontWeight: FontWeight.bold,
+                    color: primary,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Your lifestyle, organized.',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.grey.shade500,
+                    letterSpacing: 0.5,
                   ),
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

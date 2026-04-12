@@ -19,19 +19,15 @@ class DatabaseHelper {
 
   Future<Database> _initDb() async {
     Directory dir = await getApplicationDocumentsDirectory();
-    String path = '${dir.path}/omnix2.db';
-    return await openDatabase(
-      path,
-      version: 2,
-      onCreate: _createDb,
-      onUpgrade: _upgradeDb,
-    );
+    String path = '${dir.path}/omnix3.db';
+    return await openDatabase(path, version: 1, onCreate: _createDb);
   }
 
   void _createDb(Database db, int version) async {
     await db.execute('''
       CREATE TABLE tasks(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remote_id TEXT,
         title TEXT, date TEXT, priority TEXT,
         status INTEGER, category TEXT
       )
@@ -39,6 +35,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE habits(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remote_id TEXT,
         name TEXT, category TEXT, days TEXT,
         start_date TEXT, end_date TEXT
       )
@@ -46,33 +43,19 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE habit_logs(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        habit_id INTEGER, date TEXT, completed INTEGER,
-        FOREIGN KEY (habit_id) REFERENCES habits(id)
-      )
-    ''');
-    await db.execute('''
-      CREATE TABLE custom_categories(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT, icon_code INTEGER
+        remote_id TEXT,
+        habit_id INTEGER,
+        habit_remote_id TEXT,
+        date TEXT, completed INTEGER
       )
     ''');
     await db.execute('''
       CREATE TABLE journal_entries(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remote_id TEXT,
         date TEXT UNIQUE, content TEXT, mood INTEGER
       )
     ''');
-  }
-
-  void _upgradeDb(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS journal_entries(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          date TEXT UNIQUE, content TEXT, mood INTEGER
-        )
-      ''');
-    }
   }
 
   // ─── TASKS ───────────────────────────────────────────
@@ -117,6 +100,20 @@ class DatabaseHelper {
     return await db.delete('tasks');
   }
 
+  Future<void> updateTaskRemoteId(int localId, String remoteId) async {
+    Database db = await this.db;
+    await db.update('tasks', {'remote_id': remoteId},
+        where: 'id = ?', whereArgs: [localId]);
+  }
+
+  Future<void> replaceAllTasks(List<Task> tasks) async {
+    Database db = await this.db;
+    await db.delete('tasks');
+    for (final task in tasks) {
+      await db.insert('tasks', task.toMap());
+    }
+  }
+
   // ─── HABITS ──────────────────────────────────────────
   Future<List<Habit>> getHabitList() async {
     Database db = await this.db;
@@ -149,13 +146,43 @@ class DatabaseHelper {
 
   Future<void> resetHabitLogs(int habitId) async {
     Database db = await this.db;
-    await db.delete('habit_logs', where: 'habit_id = ?', whereArgs: [habitId]);
+    await db.delete('habit_logs',
+        where: 'habit_id = ?', whereArgs: [habitId]);
   }
 
   Future<int> deleteAllHabits() async {
     Database db = await this.db;
     await db.delete('habit_logs');
     return await db.delete('habits');
+  }
+
+  Future<void> updateHabitRemoteId(int localId, String remoteId) async {
+    Database db = await this.db;
+    await db.update('habits', {'remote_id': remoteId},
+        where: 'id = ?', whereArgs: [localId]);
+  }
+
+  Future<void> replaceAllHabits(
+      List<Habit> habits, List<HabitLog> logs) async {
+    Database db = await this.db;
+    await db.delete('habit_logs');
+    await db.delete('habits');
+    final Map<String, int> remoteToLocalId = {};
+    for (final habit in habits) {
+      final localId = await db.insert('habits', habit.toMap());
+      if (habit.remoteId != null) {
+        remoteToLocalId[habit.remoteId!] = localId;
+      }
+    }
+    for (final log in logs) {
+      if (log.habitRemoteId != null &&
+          remoteToLocalId.containsKey(log.habitRemoteId)) {
+        final localHabitId = remoteToLocalId[log.habitRemoteId!]!;
+        final logMap = log.toMap();
+        logMap['habit_id'] = localHabitId;
+        await db.insert('habit_logs', logMap);
+      }
+    }
   }
 
   // ─── HABIT LOGS ──────────────────────────────────────
@@ -168,9 +195,11 @@ class DatabaseHelper {
 
   Future<HabitLog?> getLogForDate(int habitId, DateTime date) async {
     Database db = await this.db;
-    final dateStr = DateTime(date.year, date.month, date.day).toIso8601String();
+    final dateStr =
+        DateTime(date.year, date.month, date.day).toIso8601String();
     final maps = await db.query('habit_logs',
-        where: 'habit_id = ? AND date = ?', whereArgs: [habitId, dateStr]);
+        where: 'habit_id = ? AND date = ?',
+        whereArgs: [habitId, dateStr]);
     if (maps.isEmpty) return null;
     return HabitLog.fromMap(maps.first);
   }
@@ -180,8 +209,10 @@ class DatabaseHelper {
     final existing = await getLogForDate(habitId, dateOnly);
     Database db = await this.db;
     if (existing == null) {
-      await db.insert('habit_logs',
-          HabitLog(habitId: habitId, date: dateOnly, completed: 1).toMap());
+      await db.insert(
+          'habit_logs',
+          HabitLog(habitId: habitId, date: dateOnly, completed: 1)
+              .toMap());
     } else {
       final newVal = existing.completed == 1 ? 0 : 1;
       await db.update('habit_logs', {'completed': newVal},
@@ -189,11 +220,19 @@ class DatabaseHelper {
     }
   }
 
+  Future<void> updateHabitLogRemoteId(
+      int localId, String remoteId) async {
+    Database db = await this.db;
+    await db.update('habit_logs', {'remote_id': remoteId},
+        where: 'id = ?', whereArgs: [localId]);
+  }
+
   Future<int> getStreakForHabit(Habit habit) async {
     final logs = await getLogsForHabit(habit.id!);
     final completedDates = logs
         .where((l) => l.completed == 1)
-        .map((l) => DateTime(l.date!.year, l.date!.month, l.date!.day))
+        .map((l) =>
+            DateTime(l.date!.year, l.date!.month, l.date!.day))
         .toSet();
     int streak = 0;
     DateTime check = DateTime.now();
@@ -218,14 +257,16 @@ class DatabaseHelper {
   // ─── JOURNAL ─────────────────────────────────────────
   Future<JournalEntry?> getJournalForDate(DateTime date) async {
     Database db = await this.db;
-    final dateStr = DateTime(date.year, date.month, date.day).toIso8601String();
+    final dateStr =
+        DateTime(date.year, date.month, date.day).toIso8601String();
     final maps = await db.query('journal_entries',
         where: 'date = ?', whereArgs: [dateStr]);
     if (maps.isEmpty) return null;
     return JournalEntry.fromMap(maps.first);
   }
 
-  Future<List<JournalEntry>> getJournalEntriesForMonth(int year, int month) async {
+  Future<List<JournalEntry>> getJournalEntriesForMonth(
+      int year, int month) async {
     Database db = await this.db;
     final start = DateTime(year, month, 1).toIso8601String();
     final end = DateTime(year, month + 1, 1).toIso8601String();
@@ -254,21 +295,18 @@ class DatabaseHelper {
     return await db.delete('journal_entries');
   }
 
-  // ─── CUSTOM CATEGORIES ───────────────────────────────
-  Future<List<Map<String, dynamic>>> getCustomCategories() async {
+  Future<void> updateJournalRemoteId(
+      int localId, String remoteId) async {
     Database db = await this.db;
-    return await db.query('custom_categories');
+    await db.update('journal_entries', {'remote_id': remoteId},
+        where: 'id = ?', whereArgs: [localId]);
   }
 
-  Future<int> insertCustomCategory(String name, int iconCode) async {
+  Future<void> replaceAllJournal(List<JournalEntry> entries) async {
     Database db = await this.db;
-    return await db
-        .insert('custom_categories', {'name': name, 'icon_code': iconCode});
-  }
-
-  Future<int> deleteCustomCategory(int id) async {
-    Database db = await this.db;
-    return await db
-        .delete('custom_categories', where: 'id = ?', whereArgs: [id]);
+    await db.delete('journal_entries');
+    for (final entry in entries) {
+      await db.insert('journal_entries', entry.toMap());
+    }
   }
 }

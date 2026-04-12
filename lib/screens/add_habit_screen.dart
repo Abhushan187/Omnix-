@@ -3,6 +3,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import '../helpers/database_helper.dart';
 import '../models/habit_model.dart';
+import '../services/sync_service.dart';
 
 class AddHabitScreen extends StatefulWidget {
   final Habit? habit;
@@ -20,8 +21,12 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   DateTime? _endDate;
   final DateFormat _dateFormatter = DateFormat('MMM dd, yyyy');
 
-  final List<String> _allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  List<String> _selectedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final List<String> _allDays = [
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
+  ];
+  List<String> _selectedDays = [
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
+  ];
 
   final List<Map<String, dynamic>> _categories = [
     {'label': 'Personal', 'icon': Icons.person_outline},
@@ -38,7 +43,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       _category = widget.habit!.category ?? 'Personal';
       _startDate = widget.habit!.startDate ?? DateTime.now();
       _endDate = widget.habit!.endDate;
-      _selectedDays = widget.habit!.daysList;
+      _selectedDays = List.from(widget.habit!.daysList);
     }
   }
 
@@ -60,6 +65,16 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     }
   }
 
+  bool isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  _delete() async {
+    await SyncService.pushHabit(widget.habit!, isDelete: true);
+    await DatabaseHelper.instance.deleteHabit(widget.habit!.id!);
+    Fluttertoast.showToast(msg: 'Habit deleted');
+    Navigator.pop(context);
+  }
+
   _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedDays.isEmpty) {
@@ -67,10 +82,8 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       return;
     }
     _formKey.currentState!.save();
-
-    // Sort days in week order
-    final ordered = _allDays.where((d) => _selectedDays.contains(d)).toList();
-
+    final ordered =
+        _allDays.where((d) => _selectedDays.contains(d)).toList();
     final habit = Habit(
       name: _name,
       category: _category,
@@ -78,29 +91,22 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       startDate: _startDate,
       endDate: _endDate,
     );
-
     if (widget.habit == null) {
-      await DatabaseHelper.instance.insertHabit(habit);
+      final localId = await DatabaseHelper.instance.insertHabit(habit);
+      habit.id = localId;
+      await SyncService.pushHabit(habit);
       Fluttertoast.showToast(msg: 'Habit created!');
     } else {
       habit.id = widget.habit!.id;
-      // If start date changed, reset logs
+      habit.remoteId = widget.habit!.remoteId;
       if (!isSameDay(_startDate, widget.habit!.startDate!)) {
         await DatabaseHelper.instance.resetHabitLogs(habit.id!);
         Fluttertoast.showToast(msg: 'Start date changed — logs reset');
       }
       await DatabaseHelper.instance.updateHabit(habit);
+      await SyncService.pushHabit(habit);
       Fluttertoast.showToast(msg: 'Habit updated!');
     }
-    Navigator.pop(context);
-  }
-
-  bool isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  _delete() async {
-    await DatabaseHelper.instance.deleteHabit(widget.habit!.id!);
-    Fluttertoast.showToast(msg: 'Habit deleted');
     Navigator.pop(context);
   }
 
@@ -127,10 +133,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
               Text(
                 widget.habit == null ? 'New Habit' : 'Edit Habit',
                 style: TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.bold,
-                  color: primary,
-                ),
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                    color: primary),
               ),
               const SizedBox(height: 24),
               Form(
@@ -138,7 +143,6 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Name
                     TextFormField(
                       initialValue: _name,
                       style: TextStyle(fontSize: 16, color: textColor),
@@ -166,8 +170,6 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                       onSaved: (v) => _name = v ?? '',
                     ),
                     const SizedBox(height: 16),
-
-                    // Category
                     Text('Category',
                         style: TextStyle(fontSize: 16, color: labelColor)),
                     const SizedBox(height: 12),
@@ -203,14 +205,13 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                                 Text(
                                   cat['label'] as String,
                                   style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: isSelected
-                                        ? Colors.white
-                                        : (isDark
-                                            ? Colors.grey.shade300
-                                            : Colors.grey.shade600),
-                                  ),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : (isDark
+                                              ? Colors.grey.shade300
+                                              : Colors.grey.shade600)),
                                 ),
                               ],
                             ),
@@ -219,8 +220,6 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                       }).toList(),
                     ),
                     const SizedBox(height: 24),
-
-                    // Days picker
                     Text('Track on these days',
                         style: TextStyle(fontSize: 16, color: labelColor)),
                     const SizedBox(height: 12),
@@ -243,7 +242,8 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: isSelected ? primary : Colors.transparent,
+                              color:
+                                  isSelected ? primary : Colors.transparent,
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: isSelected
@@ -268,8 +268,6 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                       }).toList(),
                     ),
                     const SizedBox(height: 24),
-
-                    // Start date
                     GestureDetector(
                       onTap: () => _pickDate(isStart: true),
                       child: Container(
@@ -319,8 +317,6 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // End date
                     GestureDetector(
                       onTap: () => _pickDate(isStart: false),
                       child: Container(
@@ -338,43 +334,39 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                             Icon(Icons.stop_circle_outlined,
                                 color: Colors.grey.shade400, size: 20),
                             const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('End Date (optional)',
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('End Date (optional)',
+                                      style: TextStyle(
+                                          fontSize: 12, color: labelColor)),
+                                  Text(
+                                    _endDate != null
+                                        ? _dateFormatter.format(_endDate!)
+                                        : 'No end date — runs forever',
                                     style: TextStyle(
-                                        fontSize: 12, color: labelColor)),
-                                Text(
-                                  _endDate != null
-                                      ? _dateFormatter.format(_endDate!)
-                                      : 'No end date — runs forever',
-                                  style: TextStyle(
-                                      fontSize: 15,
-                                      color: _endDate != null
-                                          ? textColor
-                                          : Colors.grey.shade400,
-                                      fontWeight: FontWeight.w500),
-                                ),
-                              ],
+                                        fontSize: 15,
+                                        color: _endDate != null
+                                            ? textColor
+                                            : Colors.grey.shade400,
+                                        fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
                             ),
                             if (_endDate != null)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8),
-                                child: GestureDetector(
-                                  onTap: () =>
-                                      setState(() => _endDate = null),
-                                  child: Icon(Icons.close_rounded,
-                                      size: 16,
-                                      color: Colors.grey.shade400),
-                                ),
+                              GestureDetector(
+                                onTap: () =>
+                                    setState(() => _endDate = null),
+                                child: Icon(Icons.close_rounded,
+                                    size: 16, color: Colors.grey.shade400),
                               ),
                           ],
                         ),
                       ),
                     ),
                     const SizedBox(height: 32),
-
-                    // Save button
                     SizedBox(
                       height: 56,
                       width: double.infinity,
@@ -384,18 +376,17 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                           backgroundColor: primary,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                              borderRadius: BorderRadius.circular(16)),
                         ),
                         child: Text(
-                          widget.habit == null ? 'Create Habit' : 'Update Habit',
+                          widget.habit == null
+                              ? 'Create Habit'
+                              : 'Update Habit',
                           style: const TextStyle(
                               fontSize: 18, fontWeight: FontWeight.w600),
                         ),
                       ),
                     ),
-
-                    // Delete button
                     if (widget.habit != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 16),
@@ -408,14 +399,12 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                               backgroundColor: Colors.red.shade400,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                                  borderRadius: BorderRadius.circular(16)),
                             ),
-                            child: const Text(
-                              'Delete Habit',
-                              style: TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.w600),
-                            ),
+                            child: const Text('Delete Habit',
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600)),
                           ),
                         ),
                       ),
