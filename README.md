@@ -6,23 +6,21 @@ Omnix is a cross-platform lifestyle tracking application built with Flutter. It 
 
 ## Screenshots
 
-| Today's Tasks | Habits | Habit Detail |
-|---|---|---|
-| ![today](screenshots/today_light.jpg) | ![habits](screenshots/habits.jpg) | ![habit_detail](screenshots/habit_detail.jpg) |
+| Splash Screen | Login | Today (Light) |
+|:---:|:---:|:---:|
+| ![](screenshots/splash_screen.jpg) | ![](screenshots/login_screen.jpg) | ![](screenshots/today_light_mode.jpg) |
 
-| Journal Diary | Journal Calendar | Journal Stats |
-|---|---|---|
-| ![diary](screenshots/journal_diary.jpg) | ![calendar](screenshots/journal_calendar.jpg) | ![stats](screenshots/journal_stats.jpg) |
+| Today (Dark) | Add Task | Habits |
+|:---:|:---:|:---:|
+| ![](screenshots/today_dark_mode.jpg) | ![](screenshots/add_task_screen.jpg) | ![](screenshots/habit_screen.jpg) |
 
-| Dark Mode | Add Task | Add Habit |
-|---|---|---|
-| ![dark](screenshots/dark_mode.jpg) | ![add_task](screenshots/add_task.jpg) | ![add_habit](screenshots/add_habit.jpg) |
+| Add Habit | Habit Detail | Journal Diary |
+|:---:|:---:|:---:|
+| ![](screenshots/add_habit_screen.jpg) | ![](screenshots/habit_detail_screen.jpg) | ![](screenshots/journal_diary_tab.jpg) |
 
-| Login | Settings |
-|---|---|
-| ![login](screenshots/login.jpg) | ![settings](screenshots/settings.jpg) |
-
----
+| Journal Calendar | Journal Statistics | Settings |
+|:---:|:---:|:---:|
+| ![](screenshots/journal_calendar_tab.jpg) | ![](screenshots/journal_statistic_tab.jpg) | ![](screenshots/setting_screen.jpg) |
 
 ## Features
 
@@ -82,28 +80,33 @@ Omnix is a cross-platform lifestyle tracking application built with Flutter. It 
 ---
 
 ## Architecture
-lib/
-├── main.dart                  # App entry, theme, auth routing
-├── models/                    # Data models (Task, Habit, HabitLog, Journal)
-├── helpers/
-│   └── database_helper.dart   # SQLite CRUD operations
-├── services/
-│   ├── supabase_service.dart   # Auth helpers
-│   └── sync_service.dart       # Cloud sync logic
-└── screens/
-├── auth/
-│   ├── login_screen.dart
-│   └── signup_screen.dart
-├── home_screen.dart        # Today's tasks + habits
-├── habits_screen.dart      # All habits list
-├── habit_detail_screen.dart
-├── add_habit_screen.dart
-├── add_task_screen.dart
-├── journal_screen.dart     # Diary + Calendar + Stats
-├── splash_screen.dart
-└── settings_screen.dart
 
----
+```
+lib/
+├── main.dart                    # App entry, theme, auth routing
+├── models/
+│   ├── task_model.dart
+│   ├── habit_model.dart
+│   ├── habit_log_model.dart
+│   └── journal_model.dart
+├── helpers/
+│   └── database_helper.dart     # SQLite CRUD operations
+├── services/
+│   ├── supabase_service.dart    # Auth helpers
+│   └── sync_service.dart        # Cloud sync logic
+└── screens/
+    ├── auth/
+    │   ├── login_screen.dart
+    │   └── signup_screen.dart
+    ├── home_screen.dart         # Today's tasks + habits
+    ├── habits_screen.dart       # All habits list
+    ├── habit_detail_screen.dart
+    ├── add_habit_screen.dart
+    ├── add_task_screen.dart
+    ├── journal_screen.dart      # Diary + Calendar + Stats
+    ├── splash_screen.dart
+    └── settings_screen.dart
+```
 
 ## Database Schema
 
@@ -132,10 +135,3 @@ cd Omnix-
 flutter pub get
 flutter run
 ```
-
-## Project Info
-
-- **Developer:** Abhushan
-- **Institute:** K.K. Wagh Institute of Engineering, Nashik
-- **Course:** Computer Science and Design — Semester 6
-- **Version:** 1.0.0

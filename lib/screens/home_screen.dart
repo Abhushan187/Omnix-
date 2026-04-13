@@ -40,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadData();
+    _loadLocalFirst();
   }
 
   @override
@@ -52,13 +52,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _loadData();
+    if (state == AppLifecycleState.resumed) _loadLocalFirst();
   }
 
-  Future<void> _loadData() async {
-    // Pull latest data from Supabase first
-    await SyncService.pullAll();
+  // Step 1: Load from SQLite immediately (no delay)
+  // Step 2: Sync with Supabase in background, then refresh
+  Future<void> _loadLocalFirst() async {
+    await _loadFromLocal();
+    _syncInBackground();
+  }
 
+  Future<void> _loadFromLocal() async {
     final tasks = await DatabaseHelper.instance.getTaskList();
     final habits = await DatabaseHelper.instance.getTodayHabits();
     final Map<int, bool> status = {};
@@ -75,6 +79,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _syncInBackground() async {
+    await SyncService.pullAll();
+    await _loadFromLocal();
   }
 
   Color _getPriorityColor(String? priority) {
@@ -141,7 +150,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => AddTaskScreen(updateTaskList: _loadData),
+              builder: (_) => AddTaskScreen(updateTaskList: _loadLocalFirst),
             ),
           ),
         ),
@@ -181,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         context,
                         MaterialPageRoute(
                             builder: (_) => const SettingsScreen()),
-                      ).then((_) => _loadData()),
+                      ).then((_) => _loadLocalFirst()),
                     ),
                   ],
                 ),
@@ -198,8 +207,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: TextField(
                 controller: _searchController,
                 onChanged: (val) => setState(() => _searchQuery = val),
-                style:
-                    TextStyle(color: isDark ? Colors.white : Colors.black87),
+                style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
                   hintText: 'Search tasks...',
                   hintStyle: TextStyle(color: Colors.grey.shade400),
@@ -216,7 +225,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         )
                       : null,
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ),
@@ -226,10 +236,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: _categories.map((cat) {
-                  final bool isSelected = _selectedCategory == cat['label'];
+                  final bool isSelected =
+                      _selectedCategory == cat['label'];
                   return GestureDetector(
-                    onTap: () =>
-                        setState(() => _selectedCategory = cat['label']),
+                    onTap: () => setState(
+                        () => _selectedCategory = cat['label']),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       margin: const EdgeInsets.only(right: 8),
@@ -288,7 +299,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             else
               ...pendingTasks.map((task) => _buildTaskCard(task)),
 
-            // Today's Habits — always before upcoming
             if (_todayHabits.isNotEmpty) ...[
               const SizedBox(height: 8),
               Row(
@@ -307,7 +317,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ..._todayHabits.map((habit) => _buildHabitRow(habit)),
             ],
 
-            // Upcoming tasks — always after habits
             if (upcomingTasks.isNotEmpty) ...[
               const SizedBox(height: 16),
               GestureDetector(
@@ -334,8 +343,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               if (_showUpcoming) ...[
                 const SizedBox(height: 12),
-                ...upcomingTasks
-                    .map((task) => _buildTaskCard(task, isUpcoming: true)),
+                ...upcomingTasks.map(
+                    (task) => _buildTaskCard(task, isUpcoming: true)),
               ],
             ],
           ],
@@ -358,7 +367,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         context,
         MaterialPageRoute(
           builder: (_) =>
-              AddTaskScreen(updateTaskList: _loadData, task: task),
+              AddTaskScreen(updateTaskList: _loadLocalFirst, task: task),
         ),
       ),
       child: Container(
@@ -376,10 +385,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 blurRadius: 8,
                 offset: const Offset(0, 2))
           ],
-          border: Border(left: BorderSide(color: priorityColor, width: 4)),
+          border:
+              Border(left: BorderSide(color: priorityColor, width: 4)),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
               Expanded(
@@ -418,7 +429,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         const SizedBox(width: 4),
                         Text(_dateFormatter.format(task.date!),
                             style: TextStyle(
-                                fontSize: 13, color: Colors.grey.shade500)),
+                                fontSize: 13,
+                                color: Colors.grey.shade500)),
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -464,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       msg: 'Task completed! 🎉',
                       toastLength: Toast.LENGTH_SHORT,
                       gravity: ToastGravity.BOTTOM);
-                  _loadData();
+                  _loadLocalFirst();
                 },
               ),
             ],
@@ -491,10 +503,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
         border: Border(
             left: BorderSide(
-                color: isDone ? primary : Colors.grey.shade300, width: 4)),
+                color: isDone ? primary : Colors.grey.shade300,
+                width: 4)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
             Icon(Icons.loop_rounded,
@@ -527,7 +541,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 if (log != null && habit.remoteId != null) {
                   await SyncService.pushHabitLog(log, habit.remoteId!);
                 }
-                _loadData();
+                _loadLocalFirst();
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
@@ -539,7 +553,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 child: Icon(Icons.check_rounded,
                     size: 18,
-                    color: isDone ? Colors.white : Colors.grey.shade400),
+                    color:
+                        isDone ? Colors.white : Colors.grey.shade400),
               ),
             ),
           ],

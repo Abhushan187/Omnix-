@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../helpers/database_helper.dart';
+import '../main.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -11,14 +12,12 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isChangingPassword = false;
 
   @override
   void dispose() {
-    _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -60,8 +59,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _showChangePasswordDialog(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    _currentPasswordController.clear();
     _newPasswordController.clear();
     _confirmPasswordController.clear();
 
@@ -80,8 +77,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'New Password',
-                  labelStyle:
-                      TextStyle(color: Colors.grey.shade500),
+                  labelStyle: TextStyle(color: Colors.grey.shade500),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                   focusedBorder: OutlineInputBorder(
@@ -96,8 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'Confirm New Password',
-                  labelStyle:
-                      TextStyle(color: Colors.grey.shade500),
+                  labelStyle: TextStyle(color: Colors.grey.shade500),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                   focusedBorder: OutlineInputBorder(
@@ -183,7 +178,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       fontSize: 14, color: Colors.grey.shade500)),
               const SizedBox(height: 24),
 
-              // ── PROFILE SECTION ──────────────────────
+              // ── PROFILE ──────────────────────────────
               Text('Profile',
                   style: TextStyle(
                       fontSize: 13,
@@ -193,7 +188,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 12),
 
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(16),
@@ -206,7 +201,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Avatar
                     CircleAvatar(
                       radius: 36,
                       backgroundColor: primary.withOpacity(0.15),
@@ -221,8 +215,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // Email
                     Text(
                       _userEmail,
                       style: TextStyle(
@@ -245,14 +237,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               fontWeight: FontWeight.w600)),
                     ),
                     const SizedBox(height: 16),
-
-                    // Change password button
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: () =>
                             _showChangePasswordDialog(context),
-                        icon: Icon(Icons.lock_outline, size: 16, color: primary),
+                        icon: Icon(Icons.lock_outline,
+                            size: 16, color: primary),
                         label: Text('Change Password',
                             style: TextStyle(color: primary)),
                         style: OutlinedButton.styleFrom(
@@ -267,7 +258,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
-              // ── CLEAR DATA SECTION ───────────────────
+              // ── CLEAR DATA ───────────────────────────
               Text('Clear Data',
                   style: TextStyle(
                       fontSize: 13,
@@ -348,7 +339,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       })),
               const SizedBox(height: 24),
 
-              // ── ACCOUNT SECTION ──────────────────────
+              // ── ACCOUNT ──────────────────────────────
               Text('Account',
                   style: TextStyle(
                       fontSize: 13,
@@ -357,10 +348,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       letterSpacing: 1)),
               const SizedBox(height: 12),
 
-              // Logout
               GestureDetector(
                 onTap: () async {
                   await Supabase.instance.client.auth.signOut();
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                          builder: (_) => const AuthGate()),
+                      (route) => false,
+                    );
+                  }
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -368,7 +365,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   decoration: BoxDecoration(
                     color: Colors.red.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.red.withOpacity(0.2)),
+                    border:
+                        Border.all(color: Colors.red.withOpacity(0.2)),
                   ),
                   child: Row(
                     children: [
@@ -393,8 +391,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     color: Colors.red)),
                             Text('Sign out of your account',
                                 style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.red)),
+                                    fontSize: 12, color: Colors.red)),
                           ],
                         ),
                       ),
@@ -406,7 +403,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 32),
 
-              // Made by credit
+              // Made by
               Center(
                 child: Column(
                   children: [
@@ -443,7 +440,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(14),
