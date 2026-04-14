@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import '../helpers/database_helper.dart';
 import '../models/habit_model.dart';
+import '../services/sync_service.dart';
 import 'add_habit_screen.dart';
 import 'habit_detail_screen.dart';
 
@@ -60,6 +63,38 @@ class _HabitsScreenState extends State<HabitsScreen>
     }
   }
 
+  void _showHabitDatePicker(Habit habit) async {
+    final today = DateTime.now();
+    final startDate = habit.startDate ?? DateTime(2020);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: today.subtract(const Duration(days: 1)),
+      firstDate: startDate,
+      lastDate: today,
+      helpText: 'Select date to mark habit',
+    );
+    if (picked != null) {
+      final pickedOnly = DateTime(picked.year, picked.month, picked.day);
+      if (!habit.isScheduledFor(pickedOnly)) {
+        Fluttertoast.showToast(
+            msg: 'Habit not scheduled for this day',
+            gravity: ToastGravity.BOTTOM);
+        return;
+      }
+      await DatabaseHelper.instance.toggleHabitLog(habit.id!, pickedOnly);
+      final log = await DatabaseHelper.instance
+          .getLogForDate(habit.id!, pickedOnly);
+      if (log != null && habit.remoteId != null) {
+        await SyncService.pushHabitLog(log, habit.remoteId!);
+      }
+      _loadHabits();
+      Fluttertoast.showToast(
+          msg:
+              'Habit updated for ${DateFormat('MMM d').format(picked)}',
+          gravity: ToastGravity.BOTTOM);
+    }
+  }
+
   List<Habit> get _filteredHabits => _habits
       .where((h) =>
           _selectedCategory == 'All' || h.category == _selectedCategory)
@@ -88,8 +123,8 @@ class _HabitsScreenState extends State<HabitsScreen>
                     fontWeight: FontWeight.bold,
                     color: primary)),
             Text('Build your streaks',
-                style: TextStyle(
-                    fontSize: 14, color: Colors.grey.shade500)),
+                style:
+                    TextStyle(fontSize: 14, color: Colors.grey.shade500)),
             const SizedBox(height: 20),
 
             SizedBox(
@@ -140,7 +175,8 @@ class _HabitsScreenState extends State<HabitsScreen>
                       Text('No habits yet.\nTap + to add one!',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                              fontSize: 16, color: Colors.grey.shade400)),
+                              fontSize: 16,
+                              color: Colors.grey.shade400)),
                     ],
                   ),
                 ),
@@ -229,28 +265,60 @@ class _HabitsScreenState extends State<HabitsScreen>
                       ],
                     ),
                   ),
+                  // History button + today check button
                   if (habit.isScheduledFor(DateTime.now()))
-                    GestureDetector(
-                      onTap: () async {
-                        await DatabaseHelper.instance
-                            .toggleHabitLog(habit.id!, DateTime.now());
-                        _loadHabits();
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: isDoneToday
-                              ? primary
-                              : Colors.grey.shade200,
-                          shape: BoxShape.circle,
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => _showHabitDatePicker(habit),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            margin: const EdgeInsets.only(right: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.history_rounded,
+                                size: 16, color: Colors.grey.shade500),
+                          ),
                         ),
-                        child: Icon(Icons.check_rounded,
-                            size: 20,
-                            color: isDoneToday
-                                ? Colors.white
-                                : Colors.grey.shade400),
+                        GestureDetector(
+                          onTap: () async {
+                            await DatabaseHelper.instance.toggleHabitLog(
+                                habit.id!, DateTime.now());
+                            _loadHabits();
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: isDoneToday
+                                  ? primary
+                                  : Colors.grey.shade200,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.check_rounded,
+                                size: 20,
+                                color: isDoneToday
+                                    ? Colors.white
+                                    : Colors.grey.shade400),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    // Not scheduled today but can still mark past days
+                    GestureDetector(
+                      onTap: () => _showHabitDatePicker(habit),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(Icons.history_rounded,
+                            size: 16, color: Colors.grey.shade500),
                       ),
                     ),
                 ],

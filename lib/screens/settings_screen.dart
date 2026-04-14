@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../helpers/database_helper.dart';
+import '../services/sync_service.dart';
 import '../main.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -35,8 +36,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(title),
         content: Text(content),
         actions: [
@@ -45,8 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () => Navigator.pop(ctx),
           ),
           TextButton(
-            child: const Text('Delete',
-                style: TextStyle(color: Colors.red)),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
             onPressed: () async {
               Navigator.pop(ctx);
               await onConfirm();
@@ -114,8 +114,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text('Update',
-                      style: TextStyle(color: primary)),
+                  : Text('Update', style: TextStyle(color: primary)),
               onPressed: () async {
                 if (_newPasswordController.text !=
                     _confirmPasswordController.text) {
@@ -133,8 +132,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 setDialogState(() => _isChangingPassword = true);
                 try {
                   await Supabase.instance.client.auth.updateUser(
-                    UserAttributes(
-                        password: _newPasswordController.text),
+                    UserAttributes(password: _newPasswordController.text),
                   );
                   Navigator.pop(ctx);
                   Fluttertoast.showToast(
@@ -174,8 +172,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: primary)),
               const SizedBox(height: 8),
               Text('Manage your account and data',
-                  style: TextStyle(
-                      fontSize: 14, color: Colors.grey.shade500)),
+                  style:
+                      TextStyle(fontSize: 14, color: Colors.grey.shade500)),
               const SizedBox(height: 24),
 
               // ── PROFILE ──────────────────────────────
@@ -274,10 +272,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: 'Delete all tasks including completed ones',
                   onTap: () => _showConfirmDialog(context,
                       title: 'Clear all tasks?',
-                      content:
-                          'This will permanently delete all your tasks.',
+                      content: 'This will permanently delete all your tasks.',
                       onConfirm: () async {
-                        await DatabaseHelper.instance.deleteAllTasks();
+                        // Delete from local AND Supabase simultaneously
+                        await Future.wait([
+                          DatabaseHelper.instance.deleteAllTasks(),
+                          SyncService.deleteAllTasksRemote(),
+                        ]);
                         Fluttertoast.showToast(
                             msg: 'All tasks cleared',
                             gravity: ToastGravity.BOTTOM);
@@ -294,7 +295,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       content:
                           'This will permanently delete all habits and streak data.',
                       onConfirm: () async {
-                        await DatabaseHelper.instance.deleteAllHabits();
+                        await Future.wait([
+                          DatabaseHelper.instance.deleteAllHabits(),
+                          SyncService.deleteAllHabitsRemote(),
+                        ]);
                         Fluttertoast.showToast(
                             msg: 'All habits cleared',
                             gravity: ToastGravity.BOTTOM);
@@ -311,8 +315,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       content:
                           'This will permanently delete all your journal entries.',
                       onConfirm: () async {
-                        await DatabaseHelper.instance
-                            .deleteAllJournalEntries();
+                        await Future.wait([
+                          DatabaseHelper.instance.deleteAllJournalEntries(),
+                          SyncService.deleteAllJournalRemote(),
+                        ]);
                         Fluttertoast.showToast(
                             msg: 'Journal cleared',
                             gravity: ToastGravity.BOTTOM);
@@ -329,10 +335,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       content:
                           'This will permanently delete ALL your tasks, habits, and journal entries.',
                       onConfirm: () async {
-                        await DatabaseHelper.instance.deleteAllTasks();
-                        await DatabaseHelper.instance.deleteAllHabits();
-                        await DatabaseHelper.instance
-                            .deleteAllJournalEntries();
+                        await Future.wait([
+                          DatabaseHelper.instance.deleteAllTasks(),
+                          DatabaseHelper.instance.deleteAllHabits(),
+                          DatabaseHelper.instance.deleteAllJournalEntries(),
+                          SyncService.deleteAllTasksRemote(),
+                          SyncService.deleteAllHabitsRemote(),
+                          SyncService.deleteAllJournalRemote(),
+                        ]);
                         Fluttertoast.showToast(
                             msg: 'All data reset',
                             gravity: ToastGravity.BOTTOM);
@@ -353,8 +363,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   await Supabase.instance.client.auth.signOut();
                   if (context.mounted) {
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                          builder: (_) => const AuthGate()),
+                      MaterialPageRoute(builder: (_) => const AuthGate()),
                       (route) => false,
                     );
                   }
@@ -365,8 +374,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   decoration: BoxDecoration(
                     color: Colors.red.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(14),
-                    border:
-                        Border.all(color: Colors.red.withOpacity(0.2)),
+                    border: Border.all(color: Colors.red.withOpacity(0.2)),
                   ),
                   child: Row(
                     children: [
@@ -403,7 +411,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 32),
 
-              // Made by
               Center(
                 child: Column(
                   children: [
@@ -416,8 +423,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: primary)),
                     const SizedBox(height: 4),
                     Text('Omnix v1.0',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey)),
+                        style:
+                            TextStyle(fontSize: 12, color: Colors.grey)),
                   ],
                 ),
               ),
@@ -440,8 +447,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(14),

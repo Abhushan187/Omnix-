@@ -55,8 +55,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) _loadLocalFirst();
   }
 
-  // Step 1: Load from SQLite immediately (no delay)
-  // Step 2: Sync with Supabase in background, then refresh
   Future<void> _loadLocalFirst() async {
     await _loadFromLocal();
     _syncInBackground();
@@ -124,6 +122,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return false;
       return true;
     }).toList();
+  }
+
+  // Shows a date picker to toggle habit for a past date
+  void _showHabitDatePicker(Habit habit) async {
+    final today = DateTime.now();
+    final startDate = habit.startDate ?? DateTime(2020);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: today.subtract(const Duration(days: 1)),
+      firstDate: startDate,
+      lastDate: today,
+      helpText: 'Select date to mark habit',
+    );
+    if (picked != null) {
+      final pickedOnly = DateTime(picked.year, picked.month, picked.day);
+      if (!habit.isScheduledFor(pickedOnly)) {
+        Fluttertoast.showToast(
+            msg: 'Habit not scheduled for this day',
+            gravity: ToastGravity.BOTTOM);
+        return;
+      }
+      await DatabaseHelper.instance.toggleHabitLog(habit.id!, pickedOnly);
+      final log = await DatabaseHelper.instance
+          .getLogForDate(habit.id!, pickedOnly);
+      if (log != null && habit.remoteId != null) {
+        await SyncService.pushHabitLog(log, habit.remoteId!);
+      }
+      _loadLocalFirst();
+      Fluttertoast.showToast(
+          msg: 'Habit log updated for ${DateFormat('MMM d').format(picked)}',
+          gravity: ToastGravity.BOTTOM);
+    }
   }
 
   @override
@@ -239,8 +269,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   final bool isSelected =
                       _selectedCategory == cat['label'];
                   return GestureDetector(
-                    onTap: () => setState(
-                        () => _selectedCategory = cat['label']),
+                    onTap: () =>
+                        setState(() => _selectedCategory = cat['label']),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       margin: const EdgeInsets.only(right: 8),
@@ -277,6 +307,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 20),
+
+            // Today + overdue tasks
             if (pendingTasks.isEmpty)
               Center(
                 child: Padding(
@@ -299,6 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             else
               ...pendingTasks.map((task) => _buildTaskCard(task)),
 
+            // Today's Habits
             if (_todayHabits.isNotEmpty) ...[
               const SizedBox(height: 8),
               Row(
@@ -317,6 +350,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ..._todayHabits.map((habit) => _buildHabitRow(habit)),
             ],
 
+            // Upcoming tasks
             if (upcomingTasks.isNotEmpty) ...[
               const SizedBox(height: 16),
               GestureDetector(
@@ -343,8 +377,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               if (_showUpcoming) ...[
                 const SizedBox(height: 12),
-                ...upcomingTasks.map(
-                    (task) => _buildTaskCard(task, isUpcoming: true)),
+                ...upcomingTasks
+                    .map((task) => _buildTaskCard(task, isUpcoming: true)),
               ],
             ],
           ],
@@ -419,6 +453,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     color: Colors.red.shade400,
                                     fontWeight: FontWeight.w600)),
                           ),
+                        // Upcoming badge
+                        if (isUpcoming)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                                _dateFormatter.format(task.date!),
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.blue.shade400,
+                                    fontWeight: FontWeight.w600)),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -466,19 +516,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ],
                 ),
               ),
-              Checkbox(
-                value: task.status == 1,
-                onChanged: (bool? value) async {
-                  task.status = (value ?? false) ? 1 : 0;
-                  await DatabaseHelper.instance.updateTask(task);
-                  await SyncService.pushTask(task);
-                  Fluttertoast.showToast(
-                      msg: 'Task completed! 🎉',
-                      toastLength: Toast.LENGTH_SHORT,
-                      gravity: ToastGravity.BOTTOM);
-                  _loadLocalFirst();
-                },
-              ),
+              // Bug 1 fix: upcoming tasks show edit icon, not checkbox
+              if (isUpcoming)
+                Icon(Icons.chevron_right_rounded,
+                    color: Colors.grey.shade400)
+              else
+                Checkbox(
+                  value: task.status == 1,
+                  onChanged: (bool? value) async {
+                    task.status = (value ?? false) ? 1 : 0;
+                    await DatabaseHelper.instance.updateTask(task);
+                    await SyncService.pushTask(task);
+                    Fluttertoast.showToast(
+                        msg: 'Task completed! 🎉',
+                        toastLength: Toast.LENGTH_SHORT,
+                        gravity: ToastGravity.BOTTOM);
+                    _loadLocalFirst();
+                  },
+                ),
             ],
           ),
         ),
@@ -532,30 +587,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
-            GestureDetector(
-              onTap: () async {
-                await DatabaseHelper.instance
-                    .toggleHabitLog(habit.id!, DateTime.now());
-                final log = await DatabaseHelper.instance
-                    .getLogForDate(habit.id!, DateTime.now());
-                if (log != null && habit.remoteId != null) {
-                  await SyncService.pushHabitLog(log, habit.remoteId!);
-                }
-                _loadLocalFirst();
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: isDone ? primary : Colors.grey.shade200,
-                  shape: BoxShape.circle,
+            // Bug 2 fix: long press to mark previous day, tap to mark today
+            Row(
+              children: [
+                // Previous day button
+                GestureDetector(
+                  onTap: () => _showHabitDatePicker(habit),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.history_rounded,
+                        size: 16, color: Colors.grey.shade500),
+                  ),
                 ),
-                child: Icon(Icons.check_rounded,
-                    size: 18,
-                    color:
-                        isDone ? Colors.white : Colors.grey.shade400),
-              ),
+                // Today check button
+                GestureDetector(
+                  onTap: () async {
+                    await DatabaseHelper.instance
+                        .toggleHabitLog(habit.id!, DateTime.now());
+                    final log = await DatabaseHelper.instance
+                        .getLogForDate(habit.id!, DateTime.now());
+                    if (log != null && habit.remoteId != null) {
+                      await SyncService.pushHabitLog(
+                          log, habit.remoteId!);
+                    }
+                    _loadLocalFirst();
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isDone ? primary : Colors.grey.shade200,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.check_rounded,
+                        size: 18,
+                        color: isDone
+                            ? Colors.white
+                            : Colors.grey.shade400),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

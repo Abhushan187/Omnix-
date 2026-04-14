@@ -9,20 +9,15 @@ class SyncService {
   static final _client = Supabase.instance.client;
 
   static String? get _userId => _client.auth.currentUser?.id;
-
   static bool get isOnline => _userId != null;
 
   // ─── TASKS ───────────────────────────────────────────
-
   static Future<void> pushTask(Task task, {bool isDelete = false}) async {
     if (!isOnline) return;
     try {
       if (isDelete) {
         if (task.remoteId != null) {
-          await _client
-              .from('tasks')
-              .delete()
-              .eq('id', task.remoteId!);
+          await _client.from('tasks').delete().eq('id', task.remoteId!);
         }
         return;
       }
@@ -43,8 +38,7 @@ class SyncService {
             .select('id')
             .single();
         final remoteId = response['id'] as String;
-        await DatabaseHelper.instance
-            .updateTaskRemoteId(task.id!, remoteId);
+        await DatabaseHelper.instance.updateTaskRemoteId(task.id!, remoteId);
       }
     } catch (e) {
       print('pushTask error: $e');
@@ -54,21 +48,27 @@ class SyncService {
   static Future<void> pullTasks() async {
     if (!isOnline) return;
     try {
-      final response = await _client
-          .from('tasks')
-          .select()
-          .eq('user_id', _userId!);
-      final remoteTasks = (response as List)
-          .map((m) => Task.fromSupabase(m))
-          .toList();
+      final response =
+          await _client.from('tasks').select().eq('user_id', _userId!);
+      final remoteTasks =
+          (response as List).map((m) => Task.fromSupabase(m)).toList();
       await DatabaseHelper.instance.replaceAllTasks(remoteTasks);
     } catch (e) {
       print('pullTasks error: $e');
     }
   }
 
-  // ─── HABITS ──────────────────────────────────────────
+  // Deletes ALL tasks for this user from Supabase
+  static Future<void> deleteAllTasksRemote() async {
+    if (!isOnline) return;
+    try {
+      await _client.from('tasks').delete().eq('user_id', _userId!);
+    } catch (e) {
+      print('deleteAllTasksRemote error: $e');
+    }
+  }
 
+  // ─── HABITS ──────────────────────────────────────────
   static Future<String?> pushHabit(Habit habit,
       {bool isDelete = false}) async {
     if (!isOnline) return null;
@@ -79,10 +79,7 @@ class SyncService {
               .from('habit_logs')
               .delete()
               .eq('habit_id', habit.remoteId!);
-          await _client
-              .from('habits')
-              .delete()
-              .eq('id', habit.remoteId!);
+          await _client.from('habits').delete().eq('id', habit.remoteId!);
         }
         return null;
       }
@@ -95,10 +92,7 @@ class SyncService {
         'end_date': habit.endDate?.toIso8601String(),
       };
       if (habit.remoteId != null) {
-        await _client
-            .from('habits')
-            .update(data)
-            .eq('id', habit.remoteId!);
+        await _client.from('habits').update(data).eq('id', habit.remoteId!);
         return habit.remoteId;
       } else {
         final response = await _client
@@ -107,8 +101,7 @@ class SyncService {
             .select('id')
             .single();
         final remoteId = response['id'] as String;
-        await DatabaseHelper.instance
-            .updateHabitRemoteId(habit.id!, remoteId);
+        await DatabaseHelper.instance.updateHabitRemoteId(habit.id!, remoteId);
         return remoteId;
       }
     } catch (e) {
@@ -120,31 +113,23 @@ class SyncService {
   static Future<void> pullHabits() async {
     if (!isOnline) return;
     try {
-      final habitsResponse = await _client
-          .from('habits')
-          .select()
-          .eq('user_id', _userId!);
-      final remoteHabits = (habitsResponse as List)
-          .map((m) => Habit.fromSupabase(m))
-          .toList();
+      final habitsResponse =
+          await _client.from('habits').select().eq('user_id', _userId!);
+      final remoteHabits =
+          (habitsResponse as List).map((m) => Habit.fromSupabase(m)).toList();
 
-      final logsResponse = await _client
-          .from('habit_logs')
-          .select()
-          .eq('user_id', _userId!);
-      final remoteLogs = (logsResponse as List)
-          .map((m) => HabitLog.fromSupabase(m))
-          .toList();
+      final logsResponse =
+          await _client.from('habit_logs').select().eq('user_id', _userId!);
+      final remoteLogs =
+          (logsResponse as List).map((m) => HabitLog.fromSupabase(m)).toList();
 
-      await DatabaseHelper.instance
-          .replaceAllHabits(remoteHabits, remoteLogs);
+      await DatabaseHelper.instance.replaceAllHabits(remoteHabits, remoteLogs);
     } catch (e) {
       print('pullHabits error: $e');
     }
   }
 
-  static Future<void> pushHabitLog(
-      HabitLog log, String habitRemoteId) async {
+  static Future<void> pushHabitLog(HabitLog log, String habitRemoteId) async {
     if (!isOnline) return;
     try {
       final data = {
@@ -154,10 +139,7 @@ class SyncService {
         'completed': log.completed,
       };
       if (log.remoteId != null) {
-        await _client
-            .from('habit_logs')
-            .update(data)
-            .eq('id', log.remoteId!);
+        await _client.from('habit_logs').update(data).eq('id', log.remoteId!);
       } else {
         final response = await _client
             .from('habit_logs')
@@ -173,8 +155,18 @@ class SyncService {
     }
   }
 
-  // ─── JOURNAL ─────────────────────────────────────────
+  // Deletes ALL habits + logs for this user from Supabase
+  static Future<void> deleteAllHabitsRemote() async {
+    if (!isOnline) return;
+    try {
+      await _client.from('habit_logs').delete().eq('user_id', _userId!);
+      await _client.from('habits').delete().eq('user_id', _userId!);
+    } catch (e) {
+      print('deleteAllHabitsRemote error: $e');
+    }
+  }
 
+  // ─── JOURNAL ─────────────────────────────────────────
   static Future<void> pushJournalEntry(JournalEntry entry,
       {bool isDelete = false}) async {
     if (!isOnline) return;
@@ -190,8 +182,7 @@ class SyncService {
       }
       final data = {
         'user_id': _userId,
-        'date': DateTime(entry.date!.year, entry.date!.month,
-                entry.date!.day)
+        'date': DateTime(entry.date!.year, entry.date!.month, entry.date!.day)
             .toIso8601String(),
         'content': entry.content ?? '',
         'mood': entry.mood ?? 3,
@@ -225,17 +216,25 @@ class SyncService {
           .from('journal_entries')
           .select()
           .eq('user_id', _userId!);
-      final remoteEntries = (response as List)
-          .map((m) => JournalEntry.fromSupabase(m))
-          .toList();
+      final remoteEntries =
+          (response as List).map((m) => JournalEntry.fromSupabase(m)).toList();
       await DatabaseHelper.instance.replaceAllJournal(remoteEntries);
     } catch (e) {
       print('pullJournal error: $e');
     }
   }
 
-  // ─── FULL SYNC ───────────────────────────────────────
+  // Deletes ALL journal entries for this user from Supabase
+  static Future<void> deleteAllJournalRemote() async {
+    if (!isOnline) return;
+    try {
+      await _client.from('journal_entries').delete().eq('user_id', _userId!);
+    } catch (e) {
+      print('deleteAllJournalRemote error: $e');
+    }
+  }
 
+  // ─── FULL SYNC ───────────────────────────────────────
   static Future<void> pullAll() async {
     if (!isOnline) return;
     await Future.wait([

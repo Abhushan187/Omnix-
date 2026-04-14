@@ -384,9 +384,9 @@ class _JournalScreenState extends State<JournalScreen>
                           style: const TextStyle(fontSize: 28)),
                       const SizedBox(height: 4),
                       Text(
-                        (m['label'] as String).split(' ').last,
+                        (m['label'] as String),
                         style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 9,
                             color: isSelected
                                 ? (m['color'] as Color)
                                 : Colors.grey.shade500,
@@ -763,7 +763,7 @@ class _JournalScreenState extends State<JournalScreen>
                             style: const TextStyle(fontSize: 24)),
                         const SizedBox(height: 2),
                         Text(
-                          (m['label'] as String).split(' ').last,
+                          (m['label'] as String),
                           style: TextStyle(
                               fontSize: 9,
                               color: isSelected
